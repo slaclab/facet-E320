@@ -1,42 +1,35 @@
 /*
- Currently needs to run using sudo to reset the camera.
+ Currently needs to run as root to reset the camera.
 
- Finds and resets the webcam via libusb.
- Captures images from the webcam via v4l.
- Runs a simple TCP server for streaming the images.
+ Finds and resets the camera via libusb.
+ Captures images from the camera via v4l.
+ Converts YUV2 -> BGR using opencv
+ Runs a simple TCP server to stream the images.
  
- Compile with g++ cam_server_v2.cpp -I/usr/include/opencv4/ -lusb-1.0 -lv4l2 -o camserver
+ Context: we would like to stream uncompressed images from a raspberry 
+ pi in the FACET tunnel to a control computer in the SLAC/FACET network 
+ or even outside. The FACET control computers can be reached via an 
+ ssh port tunnel.
  
- OpenCV (not needed anymore): 
- -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -o camserver
-
-
+ Compile with g++ camserv.cpp -I/usr/include/opencv4/ -lusb-1.0 -lv4l2 -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_imgcodecs -o camserver -o camserver
+ 
  This program is free software: you can redistribute it and/or modify it
  under the terms of the GNU General Public License as published by the
  Free Software Foundation, either version 3 of the License, or (at your
  option) any later version.
-
+ 
  This program is distributed in the hope that it will be useful, but
  WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY 
  or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License 
  for more details.
-
+ 
  You should have received a copy of the GNU General Public License along
  with this program. If not, see <https://www.gnu.org/licenses/>.
-
+ 
  Copyright Sebastian Meuren, 2022 
+ 
  */
  
-/*
- Convert the image
-*/	
-//char filename [50];
-//sprintf (filename, "text_%i_%i.png", i,j);
-//printf ("filename: %s\n", filename);
-//cv::Mat Img = cv::Mat(1080, 1920, CV_8UC2, buffers[0].start);
-//cv::Mat ImgBGR;
-//cv::cvtColor(Img, ImgBGR, cv::COLOR_YUV2BGR_YUY2);
-//cv::imwrite(filename, ImgBGR); 
 
  
 #include <unistd.h>
@@ -67,10 +60,10 @@
 #include <linux/videodev2.h>
 #include <libv4l2.h>
 
-//#include <opencv2/opencv.hpp>
-//#include <opencv2/core.hpp>
-//#include <opencv2/highgui.hpp>
-//#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/opencv.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
 
 /*
@@ -112,7 +105,7 @@ int main(int argc, char const *argv[])
 {
 	using namespace std;
 	using namespace std::chrono;
-	//using namespace cv;
+	using namespace cv;
 
 	printf("Welcome. I hope you are having a great day.\n\n");
 	printf("\e[?25l");	//hide cursor
@@ -476,9 +469,29 @@ int main(int argc, char const *argv[])
 						    perror("Dequeuing buffer failed");
 						    throw -1;
 						}
+						
+						/*
+						 Convert the image
+						*/	
+						
 
-						ssize_t sent_length	= send(new_socket, buffers[i].start, buffers[i].length, 0);
-						if(sent_length != buffers[i].length){
+						cv::Mat cvimage = cv::Mat(PIXEL_HEIGHT, PIXEL_WIDTH, CV_8UC2, buffers[i].start);
+						cv::Mat cvimgBGR;
+						cv::cvtColor(cvimage, cvimgBGR, cv::COLOR_YUV2BGR_YUY2);
+						//cv::imwrite("test.png", cvimgBGR); 
+						//printf("buffer size: %li %li", cvimgBGR.total(), cvimgBGR.elemSize());
+						//std::cout << std::flush;
+						if(cvimgBGR.total() != (PIXEL_HEIGHT * PIXEL_WIDTH)){
+							perror("Picture size wrong");
+							throw -1;							
+						}
+						if(cvimgBGR.elemSize() != 3){
+							perror("Not a color picture");
+							throw -1;							
+						}
+						ssize_t total_length	= (cvimgBGR.total() * cvimgBGR.elemSize());
+						ssize_t sent_length	= send(new_socket, cvimgBGR.data, total_length, 0);
+						if(sent_length != total_length){
 							perror("Socket send error");
 							throw -1;
 						}
@@ -497,9 +510,9 @@ int main(int argc, char const *argv[])
 
 					}
 					auto millisec_since_epoch_stop  = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-					// 8 bit per byte, 2 byte per pixel, 1000 ms per second, 1000*1000 bit per Mbit
+					// 8 bit per byte, 3 byte per pixel, 1000 ms per second, 1000*1000 bit per Mbit
 					double	FPS		= double(BUFFER_COUNT*1000)/double(millisec_since_epoch_stop - millisec_since_epoch_start);
-					double	data_rate	= FPS*double(8*2*PIXEL_WIDTH*PIXEL_HEIGHT)/(1000.0*1000.0);
+					double	data_rate	= FPS*double(8*3*PIXEL_WIDTH*PIXEL_HEIGHT)/(1000.0*1000.0);
 
 					printf("\e[?25l");	//hide cursor
 					printf("\033[F");	//move one line up
