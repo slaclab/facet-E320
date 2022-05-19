@@ -2,7 +2,7 @@
 # TCP/IP client for displaying a data stream of images
 ###############################################################################
 #
-# Connects to a streaming server (camserv.cpp) and displays the images.
+# Connects to a streaming server (vimbaserv.cpp) and displays images.
 #
 # GUI realized with PyQT5
 # Python multithreading to realize the network interface
@@ -53,20 +53,17 @@ from PyQt5.QtGui		import QColor, QPixmap, QImage
 
 ###############################################################################
 
-NETWORK_PORT 	= 42000
-NETWORK_SERVER	= "e320pi.slac.stanford.edu"
-SERVER_TIMEOUT	= 3 #seconds
+DEFAULT_NETWORK_PORT 	= 42001
+NETWORK_SERVER			= "e320pi.slac.stanford.edu"
+NETWORK_SERVER			= "192.168.0.8"
 
-# Parameters of the image
-PIXEL_WIDTH	= 1920
-PIXEL_HEIGHT	= 1080
+SERVER_TIMEOUT			= 3 #seconds
+
 
 # Initial window size
 WINDOW_WIDTH	= 1366
 WINDOW_HEIGHT	= 768
 
-#Image is an OpenCV BGR integer array (8-bit)
-IMAGE_SIZE	= 3*PIXEL_WIDTH*PIXEL_HEIGHT
 
 #https://www6.slac.stanford.edu/about/logo-resources
 SLAC_color	= "#8c1515"
@@ -86,14 +83,30 @@ def testRunningCondition(mainwindow):
 def showEmptyImage(mainwindow):
 	#####
 	# Display empty image
-	rgb_image		= np.zeros((PIXEL_HEIGHT,PIXEL_WIDTH,3))
-	qimage 			= QImage(rgb_image, rgb_image.shape[1],
-						rgb_image.shape[0], QImage.Format_RGB888)
+	image		= np.zeros((WINDOW_HEIGHT,WINDOW_WIDTH))
+	qimage 			= QImage(image, image.shape[1],
+						image.shape[0], QImage.Format_Grayscale8)
 	pixmap 			= QPixmap(qimage) 
 	mainwindow.label.setPixmap(pixmap)
 
+def socket_read(netsocket, length):
+	tcpreadstart	= time.time()
+	data			= b''
+	while(True):	
+		now			= time.time()
+		if((now-tcpreadstart) > SERVER_TIMEOUT):
+			raise ValueError("connection timed out")
+		readlength	= length - len(data) 
+		if(readlength == 0):
+			break
+		if(readlength < 0):
+			print("error reading data")
+			sys.exit()
+		data 		+= netsocket.recv(readlength)
+	return	data
 
 def camviewerNetworkThread(mainwindow):
+	global	network_port
 	while(True):
 		netsocket	= None
 		if(testRunningCondition(mainwindow) == False):
@@ -103,9 +116,11 @@ def camviewerNetworkThread(mainwindow):
 		try:
 			netsocket		= socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			hostip			= socket.gethostbyname(NETWORK_SERVER)
-			netsocket.connect((hostip, NETWORK_PORT))
+			netsocket.connect((hostip, network_port))
 			print ("network connection established: ", hostip)
 
+
+			image_size		= None
 			while(True):
 				if(testRunningCondition(mainwindow) == False):
 					netsocket.close()
@@ -115,30 +130,45 @@ def camviewerNetworkThread(mainwindow):
 				starttime	= time.time()*1000.0 #ms
 				for i in range(loopcount):
 					#####
+					# Read header
+					header		= socket_read(netsocket, 12)
+					width		= 0
+					width		+= (header[0] << 0)
+					width		+= (header[1] << 8)
+					width		+= (header[2] << 16)
+					width		+= (header[3] << 24)
+
+					height		= 0
+					height		+= (header[4] << 0)
+					height		+= (header[5] << 8)
+					height		+= (header[6] << 16)
+					height		+= (header[7] << 24)
+
+					length		= 0
+					length		+= (header[8] << 0)
+					length		+= (header[9] << 8)
+					length		+= (header[10] << 16)
+					length		+= (header[11] << 24)
+					
+					#print("image size: ", width, "\t", height, "\t", length)
+					image_size	= width * height * length
+
+					#####
 					# Read one image
-					data		= b''
-					tcpreadstart	= time.time()
-					while(True):	
-						now			= time.time()
-						if((now-tcpreadstart) > SERVER_TIMEOUT):
-							raise ValueError("connection timed out")
-						readlength	= IMAGE_SIZE - len(data) 
-						if(readlength == 0):
-							break
-						if(readlength < 0):
-							print("error reading data")
-							sys.exit()
-						data 		+= netsocket.recv(readlength)
+					imagebuffer	= socket_read(netsocket, image_size)
+				
+					#print(imagebuffer)
 					#####
 					# Convert image
 					#  https://www.kernel.org/doc/html/v5.0/media/uapi/v4l/pixfmt-yuyv.html
 					# The Cb/Cr components have only half the resolution. Therefore, we need to rescale.
-					nparr			= np.frombuffer(data, dtype=np.uint8)
-					bgr_image		= nparr.reshape(PIXEL_HEIGHT,PIXEL_WIDTH,3)
-					rgb_image		= bgr_image[:,:,::-1].copy()
+					nparr			= np.frombuffer(imagebuffer, dtype=np.uint16)
+					image			= np.multiply(nparr.reshape(height,width), int(65535/4095))
 
-					qimage 			= QImage(rgb_image, rgb_image.shape[1],
-										rgb_image.shape[0], QImage.Format_RGB888)
+					#print(image)
+
+					qimage 			= QImage(image, image.shape[1],
+										image.shape[0], QImage.Format_Grayscale16)
 					pixmap 			= QPixmap(qimage) 
 					mainwindow.label.setPixmap(pixmap)
 
@@ -146,7 +176,7 @@ def camviewerNetworkThread(mainwindow):
 
 				stoptime	= time.time()*1000.0 #ms
 				fps		= float(loopcount*1000)/float(stoptime-starttime)
-				print("Data: ", fps*IMAGE_SIZE*8/1e6 , "MBit/s; FPS: ", fps)
+				print("Data: ", fps*image_size*8/1e6 , "MBit/s; FPS: ", fps)
 
 
 		except Exception as e:
@@ -175,8 +205,8 @@ class MainWindow(QWidget):
 		self.scroll 		= QScrollArea(self)
 		self.scroll.move(0,0)
 
-		self.setMaximumWidth(PIXEL_WIDTH)
-		self.setMaximumHeight(PIXEL_HEIGHT)
+		#self.setMaximumWidth(PIXEL_WIDTH)
+		#self.setMaximumHeight(PIXEL_HEIGHT)
 
 		self.label 			= QLabel(self)
 		self.label.move(0,0)
@@ -240,7 +270,16 @@ if __name__ == '__main__':
 	# Make sure CTRL+C is able to stop the program
 	#https://stackoverflow.com/questions/5160577/ctrl-c-doesnt-work-with-pyqt
 	signal.signal(signal.SIGINT, signal.SIG_DFL)
+		
+	network_port	= DEFAULT_NETWORK_PORT
+
+	#print(len(args), args)
+	args = sys.argv
+	if(len(args) == 2):
+		network_port	= int(args[1])
+
 	qt_main()
+
 	
 	
 ###############################################################################	
