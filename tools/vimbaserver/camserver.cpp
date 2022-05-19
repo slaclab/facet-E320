@@ -100,7 +100,7 @@ void CCamServer::main(){
 		fflush(stdout);
 		global.stdout_lock.unlock();
 
-		sleep(15);
+		this_thread::sleep_for(1000ms);
 		return;
 	}
 
@@ -177,7 +177,7 @@ void CCamServer::main(){
 					break;
 				}			
 				/*************************************************/
-				sleep(0.01);
+				this_thread::sleep_for(50ms);
 			}
 		}catch(...){
 			global.stdout_lock.lock();

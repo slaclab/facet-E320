@@ -75,7 +75,10 @@ void	MyObserver::FrameReceived (const FramePtr frame){
 	camserver->server_access_mutex.lock();
 	try{
 		// delete old images
-		while(camserver->image_queue_old.empty() == false){
+		while(true){
+			if(camserver->image_queue_old.empty() == true){
+				break;
+			}
 			CByteImage*		oldimage	= camserver->image_queue_old.front();
 			camserver->image_queue_old.pop();
 			delete	oldimage;
@@ -100,6 +103,7 @@ void	MyObserver::FrameReceived (const FramePtr frame){
 		if((server_status_copy == CAM_SERVER_INIT) or
 			(server_status_copy == CAM_SERVER_STOP) or
 			(server_status_copy == CAM_SERVER_ERROR)){
+			this_thread::sleep_for(500ms);
 			continue;
 		}else{
 			break;
@@ -122,7 +126,10 @@ void	MyObserver::FrameReceived (const FramePtr frame){
 		camserver->server_access_mutex.lock();
 		try{
 			// delete images which might still be in the queue
-			while(camserver->image_queue_new.empty() == false){
+			while(true){
+				if(camserver->image_queue_new.empty() == true){
+					break;
+				}
 				CByteImage*		image	= camserver->image_queue_new.front();
 				camserver->image_queue_new.pop();
 				delete	image;
@@ -190,6 +197,7 @@ void	MyObserver::FrameReceived (const FramePtr frame){
 		if(queue_size < max_queue_size){
 			break;
 		}
+		this_thread::sleep_for(50ms);
 	}
 
 	/*************************************************/

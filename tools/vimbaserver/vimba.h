@@ -106,6 +106,7 @@ class	CVimbaCamera {
 		FeaturePtrVector	get_feature_list();
 		void				run_command(string feature_name);
 		VmbInt64_t			get_feature_value(string feature_name);
+		double				get_feature_value_double(string feature_name);
 		void				set_feature_value(string feature_name, VmbInt64_t value);
 
 		// camere information, read out from the camera by the class constructor

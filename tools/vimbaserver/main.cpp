@@ -245,7 +245,7 @@ int main(int argc, char const *argv[]){
 			cout << "===== usb reset =====" << endl;
 			global.stdout_lock.unlock();
 			avt_usb_reset();
-			sleep(1);
+			this_thread::sleep_for(1000ms);
 
 			/*****************************************************/
 			// reset camera via vimba
@@ -262,7 +262,7 @@ int main(int argc, char const *argv[]){
 			global.stdout_lock.unlock();
 
 			vimba->shutdown();
-			sleep(1);
+			this_thread::sleep_for(1000ms);
 
 			global.stdout_lock.lock();
 			cout << "init vimba" << endl;
@@ -363,7 +363,7 @@ int main(int argc, char const *argv[]){
 					global.stdout_lock.unlock();
 
 					vimba->shutdown();
-					sleep(1);
+					this_thread::sleep_for(1000ms);
 
 					global.stdout_lock.lock();
 					cout << "init vimba" << endl;
@@ -371,7 +371,7 @@ int main(int argc, char const *argv[]){
 					global.stdout_lock.unlock();
 
 					vimba->init();
-					sleep(1);	
+					this_thread::sleep_for(1000ms);
 
 					/*****************************************************/
 					// test detected cameras
@@ -442,14 +442,15 @@ int main(int argc, char const *argv[]){
 				}catch(...){
 					cout << "error during vimba camera setup" << endl;
 				}
-				sleep(3.0);
+				this_thread::sleep_for(1000ms);
 			}// attempt for loop
 			/*****************************************************/
 			// test if we are ready to go on
 			if(ready_to_stream == true){
 				break;
 			}
-		sleep(3.0);
+			
+		this_thread::sleep_for(1000ms);
 		}// reset while
 
 
@@ -588,6 +589,15 @@ int main(int argc, char const *argv[]){
 				cout << "DeviceLinkThroughputLimit:     " << throughput_limit/(1000*1000) << " MByte/s" << endl;
 				global.stdout_lock.unlock();
 
+
+				// get image properties
+				double	exposure_time					= camera->get_feature_value_double("ExposureTime");
+				global.stdout_lock.lock();
+				cout << "ExposureTime:                  " << exposure_time  << " microseconds " << endl;
+				global.stdout_lock.unlock();
+
+
+
 								
 				// get image properties
 				VmbInt64_t 	image_height				= camera->get_feature_value("Height");
@@ -631,7 +641,12 @@ int main(int argc, char const *argv[]){
 			// wait for error	
 			/*****************************************************************/
 			while(true){
-				sleep(3);
+				global.stdout_lock.lock();
+				cout << "main: error test" << endl;
+				global.stdout_lock.unlock();
+				this_thread::sleep_for(1000ms);
+				
+				
 				int		server_status_copy		= 0;
 				bool	reset					= false;
 				/*****************************************************************/
@@ -737,7 +752,7 @@ int main(int argc, char const *argv[]){
 		}catch(...){
 		
 		}
-		sleep(5);
+		this_thread::sleep_for(5000ms);
 	}// main loop
 	/*************************************************************************/
 

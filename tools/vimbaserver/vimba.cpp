@@ -284,6 +284,33 @@ VmbInt64_t	CVimbaCamera::get_feature_value(string feature_name){
 	return	value;
 }
 
+double	CVimbaCamera::get_feature_value_double(string feature_name){
+	VmbErrorType    err;
+	FeaturePtr		vimba_feature;
+	string			err_msg;
+	const char*		cfeature_name 	= feature_name.c_str();
+	
+	// get the feature
+	err 		= apicamera->GetFeatureByName(cfeature_name, vimba_feature);
+	if(err != VmbErrorSuccess){
+		err_msg				= "vimba GetFeatureByName " + feature_name + " failed";
+		const char*	cerr 	= err_msg.c_str();
+		perror (cerr);
+		throw -1;
+	}
+	// get the value of the feature
+	double 		value;
+	err			= vimba_feature->GetValue(value);
+	if(err != VmbErrorSuccess){
+		err_msg	= "vimba GetValue of " + feature_name + " failed";
+		const char*	cerr 	= err_msg.c_str();
+		perror (cerr);
+		throw -1;
+	}
+
+	return	value;
+}
+
 /*********************************************************/
 // set a vimba feature value
 /*********************************************************/

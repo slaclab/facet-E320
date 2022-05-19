@@ -229,7 +229,7 @@ void CServer<queue_length>::server_main_internal(void* server_voidptr){
 			//cout << "while" << endl;
 			int				retval;
 			struct timeval	tv;
-			tv.tv_sec		= 0.1;
+			tv.tv_sec		= 1;
 			tv.tv_usec		= 0;
 
 			fd_set 			rfds;
