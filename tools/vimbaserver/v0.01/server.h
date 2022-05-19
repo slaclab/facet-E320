@@ -69,9 +69,7 @@ class CServer{
 
 		int		get_client_socket(){return	client_socket;};
 
-		string	get_server_name(){return servername;};
-
-	protected:
+	private:
 		string			servername;
 		int				port;
 		int				server_socket;

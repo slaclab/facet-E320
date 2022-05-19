@@ -17,8 +17,7 @@
 //
 /*****************************************************************************/ 
 #include "vimba.h"
-#include "vimba_stream.h"
-#include "server.h"
+#include "server.h" 
 
 #include <vector>
 #include <queue>
@@ -33,15 +32,14 @@
 
 class MyObserver;
 
-
 template <int queue_length> class CServer;
 class CCamServer;
 
 // define the number of frames the vimba buffer contains
 #define		VIMBA_BUFFER_LENGTH		3
 
-using CMyVimbaStream	= CVimbaStream<MyObserver>;
-//using CMyVimba	= CVimba<MyObserver,VIMBA_BUFFER_LENGTH>;
+using CMyCamera	= CVimbaCamera<MyObserver,VIMBA_BUFFER_LENGTH>;
+using CMyVimba	= CVimba<MyObserver,VIMBA_BUFFER_LENGTH>;
 
 #define		DATA_SERVER_QUEUE_LENGTH		1
 using CDataServer	= CServer<DATA_SERVER_QUEUE_LENGTH>;
@@ -59,24 +57,16 @@ using CDataServer	= CServer<DATA_SERVER_QUEUE_LENGTH>;
 class	CGlobal{
 	public:
 	CGlobal();
-	// lock this for reading global
-	mutex						global_lock;
-
-	// lock this for accessing stdout
 	mutex						stdout_lock;
-
-	// id strings for each camera
-	std::vector<string>			camera_id_list;
-
-	// server for each camera
+	CMyVimba*					vimba;	
 	std::vector<CCamServer*>	camserver_list;
-
+	
 };
 
 
 inline
 CGlobal::CGlobal(){
-
+	vimba	= NULL;
 }
 
 extern CGlobal global;

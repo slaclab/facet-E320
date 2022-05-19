@@ -1,0 +1,54 @@
+/*****************************************************************************/
+// Start asynchronous capture
+/*****************************************************************************/
+
+void		CVimbaCamera::start_capture(){
+
+
+	// get payload size
+	VmbInt64_t 	payload_size	= this->get_feature_value("PayloadSize");
+
+	// allocate frames for capturing
+	for (int i = 0; i < buffer_length; i++){
+		Frame*			frame		= new Frame(payload_size);
+		FramePtr		frameptr	= FramePtr(frame);
+		frame_buffer.push_back(frameptr);
+	}
+
+	// anounce the frames to the camera, register observer callback object
+	for(auto frame : frame_buffer){
+		frame->RegisterObserver(IFrameObserverPtr(new Observer(apicamera)));
+		apicamera->AnnounceFrame(frame);
+	}
+	// start the capture engine
+	apicamera->StartCapture();
+	// queue all frames in the buffer
+	for(auto frame : frame_buffer){
+		apicamera->QueueFrame(frame);
+	}
+	// start the acquisition
+	this->run_command("AcquisitionStart");
+		
+}
+/*****************************************************************************/
+// Stop asynchronous capture
+/*****************************************************************************/
+
+void		CVimbaCamera::stop_capture(){
+
+	// stop the acquisition
+	this->run_command("AcquisitionStop");
+	//cout	<< "acquisition stopped" << endl;
+	apicamera->EndCapture();
+	//cout	<< "EndCapture" << endl;
+	apicamera->FlushQueue();
+	//cout	<< "FlushQueue" << endl;
+	apicamera->RevokeAllFrames();
+	//cout	<< "RevokeAllFrames" << endl;
+
+	// unregister the observer
+	for(auto frame : frame_buffer){
+		frame->UnregisterObserver();
+	}	
+
+}
