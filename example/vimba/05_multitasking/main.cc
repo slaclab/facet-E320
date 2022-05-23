@@ -73,14 +73,18 @@ using namespace AVT;
 using namespace VmbAPI;
 using namespace std::chrono;
 
+
+// number of frames in the queue
+#define		NUMBER_OF_FRAMES_IN_BUFFER 5
+// maximum attempts
+#define		CAMERA_MAX_ATTEMPTS		5
 /*****************************************************************************/
 // vimba main
 /*****************************************************************************/
 
-// main vimba instance
+// main vimba instance, see "vimba.h"
 CVimba		global_vimba;
 mutex		CVimba::access_mutex;
-
 
 
 
@@ -89,21 +93,40 @@ mutex		CVimba::access_mutex;
 /*****************************************************************************/
 class FrameObserver : public IFrameObserver{
 	public:
-				FrameObserver (CameraPtr apicamera, CQueue<FramePtr>* framequeue) : IFrameObserver (apicamera){ 
-						this->apicamera 	= apicamera;
-						this->framequeue	= framequeue;
-				};
-
-				~FrameObserver (){cout << "FrameObserver deleted" << endl;};
+		// constructor
+		FrameObserver (CameraPtr apicamera, CQueue<FramePtr>* framequeue);
+		// destructor
+		~FrameObserver ();
+		// callback
 		void	FrameReceived (const FramePtr frame);
 	
 	private:
+		// camera which is sending the frames
 		CameraPtr 			apicamera;
+		// queue to which we should return the received frames
 		CQueue<FramePtr>*	framequeue;
 		
 };
 
+/***********************************************/
+// constructor
+/***********************************************/
+FrameObserver::FrameObserver (CameraPtr apicamera, CQueue<FramePtr>* framequeue) : IFrameObserver (apicamera){ 
+	this->apicamera 	= apicamera;
+	this->framequeue	= framequeue;
+}
 
+/***********************************************/
+// destructor
+/***********************************************/
+FrameObserver::~FrameObserver(){ 
+	//cout << "FrameObserver deleted" << endl;
+}
+
+
+/***********************************************/
+// callback: camera provides a new frame
+/***********************************************/
 // Frame callback notifies about incoming frames
 void FrameObserver::FrameReceived (const FramePtr frame)
 {
@@ -115,16 +138,19 @@ void FrameObserver::FrameReceived (const FramePtr frame)
 
 
 /*****************************************************************************/
-// Test that frames get properly deleted
+// frame class: overloaded destructor to make sure frames get deleted
 /*****************************************************************************/
 class MyFrame : public Frame{
 	public:
 	MyFrame(VmbInt64_t framesize) : Frame(framesize){};
-	~MyFrame() {cout << "Frame deleted" << endl;};
-
+	~MyFrame() {
+	//cout << "Frame deleted" << endl;
+	};
 };
-/*****************************************************************************/
 
+/*****************************************************************************/
+// Get current date + time
+/*****************************************************************************/
 string	get_current_date_time_string(){
 
 	// https://stackoverflow.com/questions/17223096/outputting-date-and-time-in-c-using-stdchrono
@@ -136,72 +162,116 @@ string	get_current_date_time_string(){
 	return	datetimestring.str();
 }
 
-
 /*****************************************************************************/
 // Camera streaming thread main function
 /*****************************************************************************/
-
-
-
 void	camera_streaming_main(string cameraID){
 
 	// camera we are working with
 	CameraPtr	apicamera;
 
-	// open a file for logging of what is happening
-	string		outputfile_name	= cameraID + ".log";
-	ofstream	outputfile;
-	// open the file for output, overwrite old content
-	outputfile.open(outputfile_name, ios::trunc | ios::out);
-	outputfile.close();
-
 	// frame-pointer queue
 	CQueue<FramePtr>	framequeue;
-	
-	auto			error_timeout	= 3s;
-	
-	// main loop
-	while(true){
 
-		outputfile.open(outputfile_name, ios::app | ios::out);						
-		outputfile << "trying to open camera: " << cameraID << endl;
-			
+	// for streaming data
+	vector<IFrameObserverPtr>		fobserver_list;
+	vector<FramePtr>				frame_list;
+
+
+	// wait time after an error was encountered
+	auto			error_timeout	= 3s;
+
+	// open a file for "cout" logging
+	string		outputfile_name	= cameraID + ".log";
+	ofstream	outputfile;
+	// we open the file once to empty it
+	outputfile.open(outputfile_name, ios::trunc | ios::out);
+	outputfile.close();
+	// open it again for logging
+	outputfile.open(outputfile_name, ios::app | ios::out);
+
+	/***********************************************/
+	// feature list
+	/***********************************************/
+	// vimba string		vimba data type		short (for user interface)
+	//
+	//
+	vector<pair<string,string>> 	featurelist;
+	
+	featurelist.push_back(make_pair(string("PixelFormat"), string("VmbInt64_t")));
+	featurelist.push_back(make_pair(string("ExposureTime"), string("double")));
+	featurelist.push_back(make_pair(string("DeviceLinkSpeed"), string("VmbInt64_t")));
+	featurelist.push_back(make_pair(string("DeviceLinkThroughputLimit"), string("VmbInt64_t")));
+	featurelist.push_back(make_pair(string("Height"), string("VmbInt64_t")));
+	featurelist.push_back(make_pair(string("Width"), string("VmbInt64_t")));
+	featurelist.push_back(make_pair(string("PayloadSize"), string("VmbInt64_t")));
+
+
+	
+	/***********************************************/
+	// main loop
+	/***********************************************/
+	while(true){
+		// make sure current stream is written to file
+		outputfile.flush();		
+		/***********************************************/
+		// find camera
+		/***********************************************/
+		while(true){
+			try{
+				outputfile << "trying to open camera: " << cameraID << " " << get_current_date_time_string() << endl;
+				apicamera	= global_vimba.get_apicamera_by_id(cameraID);	
+			}catch(...){
+				outputfile << "vimba get_apicamera_by_id failed" << endl;
+				this_thread::sleep_for(error_timeout);
+				continue;
+			}
+			break;
+		}
+		// high-level vimba camera access
+		CVimbaCamera	camera(&global_vimba);
+		/***********************************************/
+		// close camera
+		/***********************************************/
 		try{
-			apicamera	= global_vimba.get_apicamera_by_id(cameraID);	
+			camera.close();
 		}catch(...){
-			cerr << "failed" << endl;
-			outputfile.close();
+			outputfile << "error closing camera" << endl;
 			this_thread::sleep_for(error_timeout);
 			continue;
 		}
-		
-		CVimbaCamera	camera(&global_vimba);
-
+		/***********************************************/
+		// open camera
+		/***********************************************/
 		try{			
+			// open the camera for access
 			camera.open(apicamera);
-			camera.get_info();
-
-			outputfile	<< endl;
-			outputfile	<< "===== camera " << camera.get_camID() << " =====" << endl;		
-
-			/*****************************************************************/
-			// print certain features
-			/*****************************************************************/	
-			vector<pair<string,string>> 	featurelist;
-			
-			featurelist.push_back(make_pair(string("PixelFormat"), string("VmbInt64_t")));
-			featurelist.push_back(make_pair(string("ExposureTime"), string("double")));
-			featurelist.push_back(make_pair(string("DeviceLinkSpeed"), string("VmbInt64_t")));
-			featurelist.push_back(make_pair(string("DeviceLinkThroughputLimit"), string("VmbInt64_t")));
-			featurelist.push_back(make_pair(string("Height"), string("VmbInt64_t")));
-			featurelist.push_back(make_pair(string("Width"), string("VmbInt64_t")));
-			featurelist.push_back(make_pair(string("PayloadSize"), string("VmbInt64_t")));
-
-			outputfile << endl;		
+		}catch(...){
+			outputfile << "error opening camera" << endl;
+			this_thread::sleep_for(error_timeout);
+			continue;
+		}
+		/***********************************************/
+		try{
+			/***********************************************/
+			// retrieve basic camera info
+			/***********************************************/
+			try{			
+				camera.get_info();
+				outputfile	<< endl;
+				outputfile	<< "===== camera " << camera.get_camID() << " =====" << endl;		
+				outputfile << endl;		
+			}catch(...){
+				outputfile << "error get_info" << endl;
+				throw	-1;
+			}
+			/***********************************************/
+			// get & print current camera parameters
+			/***********************************************/
 			for(auto item : featurelist){
 				try{
 					string	printstring	= item.first + ":";			
-					printstring.resize(32,' ');
+					printstring.resize(40,' ');
 					outputfile << printstring;
 					if(item.second == "VmbInt64_t"){
 						VmbInt64_t	value	= camera.get_feature_value(item.first);
@@ -211,180 +281,222 @@ void	camera_streaming_main(string cameraID){
 						outputfile << value << endl;
 					}
 				}catch(...){
-					outputfile << "error" << endl;
-					this_thread::sleep_for(error_timeout);
+					outputfile << "error reading " << camera.get_feature_value(item.first) << endl;
+					throw	-1;
 				}
 			}
 			outputfile << endl;	
-		}catch(...){
-			outputfile << "error reading information" << endl;
-			this_thread::sleep_for(error_timeout);
-		}
-		/*****************************************************************/
-		// set certain features
-		/*****************************************************************/	
-
-		try{			
-			VmbUint64_t		throughput_limit = (VmbUint64_t)(40*1000*1000);
-			camera.set_feature_value("DeviceLinkThroughputLimit", throughput_limit);
-		}catch(...){
-			outputfile << "error setting information" << endl;
-			this_thread::sleep_for(error_timeout);
-		}
-
-		/*****************************************************************/
-		// Stream data
-		/*****************************************************************/	
-		vector<IFrameObserverPtr>		fobserver_list;
-		vector<FramePtr>				frame_list;
-
-		VmbInt64_t	payload_size	= 0;
-		try{			
-			camera.open(apicamera);
-			payload_size	=	camera.get_feature_value("PayloadSize");
-					
-		}catch(...){
-			outputfile << "error getting the payload_size" << endl;
-			this_thread::sleep_for(error_timeout);
-		}
-
-		// clear the old frame queue
-		while(true){
-			bool			queue_empty		= framequeue.is_empty();
-			if(queue_empty == true){
-				break;
+			/***********************************************/
+			// set default values
+			/***********************************************/
+			VmbUint64_t		throughput_limit 	= (VmbUint64_t)(30*1000*1000);
+			bool			success				= false;
+			try{			
+				//camera.open(apicamera, VmbAccessModeConfig);
+				camera.set_feature_value("DeviceLinkThroughputLimit", throughput_limit);
+			}catch(...){
+				outputfile << "error setting DeviceLinkThroughputLimit "  << endl;
 			}
-			// queue is not empty, remove one frame
-			FramePtr		frame			= framequeue.pop();
-		}				
 
+			/***********************************************/
+			// prepare streaming of data
+			/***********************************************/
 
-		// create new frames
-		int	number_of_frames	= 10;
-		for (int i = 0; i < number_of_frames; i++){
-			FramePtr			frame		= FramePtr(new MyFrame(payload_size));
-			IFrameObserverPtr	observer	= IFrameObserverPtr(new FrameObserver(apicamera, &framequeue));
-
-			frame_list.push_back(frame);
-			fobserver_list.push_back(observer);
-		}
-
-		try{
-
-			for (int i = 0; i < number_of_frames; i++){
-				frame_list[i]->RegisterObserver(fobserver_list[i]);
-				camera.announce_frame(frame_list[i]);
+			// get current payload size
+			VmbInt64_t	payload_size	= 0;
+			try{			
+				camera.open(apicamera);
+				payload_size	=	camera.get_feature_value("PayloadSize");
+						
+			}catch(...){
+				outputfile << "error reading PayloadSize" << endl;
+				throw	-1;
 			}
-		
+
+			// clear the old frame queue
+			while(true){
+				if(framequeue.is_empty() == true){
+					break;
+				}
+				// queue is not empty, remove one frame
+				FramePtr		frame			= framequeue.pop();
+				throw	-1;
+			}				
+
+			// create new frames
+			try{
+				for (int i = 0; i < NUMBER_OF_FRAMES_IN_BUFFER; i++){
+					FramePtr			frame		= FramePtr(new MyFrame(payload_size));
+					IFrameObserverPtr	observer	= IFrameObserverPtr(new FrameObserver(apicamera, &framequeue));
+
+					frame_list.push_back(frame);
+					fobserver_list.push_back(observer);
+				}
+			}catch(...){
+				outputfile << "error reading PayloadSize" << endl;
+				throw	-1;
+			}
+			
+			// register observer, announce frames
+			try{
+				for (int i = 0; i < NUMBER_OF_FRAMES_IN_BUFFER; i++){
+					frame_list[i]->RegisterObserver(fobserver_list[i]);
+					camera.announce_frame(frame_list[i]);
+				}
+			}catch(...){
+				outputfile << "error RegisterObserver / announce_frame" << endl;
+				throw	-1;
+			}
+			
 			// start the capture engine
-			camera.start_capture();
-		
-			for (int i = 0; i < number_of_frames; i++){
-				camera.queue_frame(frame_list[i]);	
+			try{
+				camera.start_capture();
+			}catch(...){
+				outputfile << "error start_capture" << endl;
+				throw	-1;
 			}
 
+			// queue frames
+			try{
+				for (int i = 0; i < NUMBER_OF_FRAMES_IN_BUFFER; i++){
+					camera.queue_frame(frame_list[i]);	
+				}
+			}catch(...){
+				outputfile << "error queue_frame" << endl;
+				throw	-1;
+			}
 
-			camera.run_command("AcquisitionStart"); 			
-			outputfile	<< endl << "===== start " << get_current_date_time_string() << " =====" << endl;
-
-			/*****************************************************************/
-			// start of data acquisition
-			/*****************************************************************/
-
-			// specify the duration of the acquisition (in seconds)
+			/***********************************************/
+			// start data acquisition
+			/***********************************************/
+			// duration of the acquisition (in seconds)
 			int		acquisition_time		= 5;
 			auto	timeout_start			= system_clock::now();
 			int		framecounter			= 0;
-			while(true){
-				// test for timeout
-				auto	current_time		= system_clock::now();
-				int		tdiff				= duration_cast<chrono::seconds>(current_time - timeout_start).count();			
-				if(tdiff > acquisition_time){
-					// time elapsed
-					break;
-				}
-				// process frames
+
+			try{
+				camera.run_command("AcquisitionStart"); 			
+				outputfile	<< endl << "===== start " << get_current_date_time_string() << " =====" << endl;
+			}catch(...){
+				outputfile << "error AcquisitionStart" << endl;
+				throw	-1;
+			}
+
+			/***********************************************/
+			// acquisition main loop
+			/***********************************************/
+			try{
 				while(true){
-					bool			queue_empty		= framequeue.is_empty();
-					if(queue_empty == true){
+					// test for timeout
+					auto	current_time		= system_clock::now();
+					int		tdiff				= duration_cast<chrono::seconds>(current_time - timeout_start).count();			
+					if(tdiff > acquisition_time){
+						// time elapsed
 						break;
 					}
-					// queue is not empty, process frames
-					FramePtr		frame			= framequeue.pop();
-					// re-queue the frame to the camera
-					apicamera->QueueFrame(frame);
-					framecounter++;			
-				}				
-							
-				// sleep brievly 
-				this_thread::sleep_for(1ms);
+					// process frames
+					while(true){
+						bool			queue_empty		= framequeue.is_empty();
+						if(queue_empty == true){
+							break;
+						}
+						// queue is not empty, process frames
+						FramePtr		frame			= framequeue.pop();
+						// re-queue the frame to the camera
+						apicamera->QueueFrame(frame);
+						framecounter++;			
+					}				
+								
+					// sleep brievly 
+					this_thread::sleep_for(0.5ms);
+				}
+			}catch(...){
+				outputfile << "error during acquisition loop" << endl;
+				throw	-1;
 			}
-			/*****************************************************************/
+			/***********************************************/
 			// end of data acquisition
-			/*****************************************************************/
-			outputfile	<< "captured " << double(framecounter)/double(acquisition_time) << " FPS" << endl;
-			outputfile	<< "data speed: " << 8.0 * double(payload_size * framecounter) / (acquisition_time * 1000 * 1000) << " MBit / s" << endl;
-		
-			camera.run_command("AcquisitionStop");
-			outputfile << "===== stop " << get_current_date_time_string() << " =====" << endl << endl;
+			/***********************************************/
+			try{
+				camera.run_command("AcquisitionStop");
+				outputfile	<< "captured " << double(framecounter)/double(acquisition_time) << " FPS" << endl;
+				outputfile	<< "data speed: " << 8.0 * double(payload_size * framecounter) / (acquisition_time * 1000 * 1000) << " MBit / s" << endl;
+				outputfile << "===== stop " << get_current_date_time_string() << " =====" << endl << endl;
+			}catch(...){
+				outputfile << "error AcquisitionStop" << endl;
+				throw	-1;
+			}			
 
-		}catch(...){
-			outputfile << "acquisition failed" << endl;
-			this_thread::sleep_for(error_timeout);
-		}
-		try{
-			camera.end_capture();
-			camera.flush_queue();
-			camera.revoke_all_frames();
-		}catch(...){
-			outputfile << "error cleaning up" << endl;
-			this_thread::sleep_for(error_timeout);
-		}
-		try{
-			for (int i = 0; i < number_of_frames; i++){
-				frame_list[i]->UnregisterObserver();
+			// clean up after the acquisition
+			try{
+				camera.end_capture();
+				camera.flush_queue();
+				camera.revoke_all_frames();
+			}catch(...){
+				outputfile << "error cleaning up after acquisition" << endl;
+				throw	-1;
 			}
-		}catch(...){
-			outputfile << "error UnregisterObserver" << endl;
-			this_thread::sleep_for(error_timeout);
-		}
-		try{
-			// clear lists
-			while(true){
-				if(frame_list.empty() == true){
-					break;
+			
+			// unregister observers
+			try{
+				for (int i = 0; i < NUMBER_OF_FRAMES_IN_BUFFER; i++){
+					frame_list[i]->UnregisterObserver();
 				}
-				FramePtr	frame	= frame_list.back();
-				frame_list.pop_back();
+			}catch(...){
+				outputfile << "error UnregisterObserver" << endl;
+				throw	-1;
 			}
 
-			// clear lists
-			while(true){
-				if(fobserver_list.empty() == true){
-					break;
+			// empty the frame list
+			try{
+				while(true){
+					if(frame_list.empty() == true){
+						break;
+					}
+					FramePtr	frame	= frame_list.back();
+					frame_list.pop_back();
 				}
-				IFrameObserverPtr	observer	= fobserver_list.back();
-				fobserver_list.pop_back();
+			}catch(...){
+				outputfile << "error emtpying frame_list" << endl;
+				throw	-1;
 			}
+			
+			// empty the observer list
+			try{
+				while(true){
+					if(fobserver_list.empty() == true){
+						break;
+					}
+					IFrameObserverPtr	observer	= fobserver_list.back();
+					fobserver_list.pop_back();
+				}
+			}catch(...){
+				outputfile << "error emtpying fobserver_list" << endl;
+				throw	-1;
+			}
+			/***********************************************/
+			// close camera
+			/***********************************************/
+			try{
+				camera.close();
+			}catch(...){
+				outputfile << "error closing camera" << endl;
+				throw	-1;
+			}
+			/***********************************************/
 		}catch(...){
-			outputfile << "error clearing lists" << endl;
+			/***********************************************/
+			// error occured
+			/***********************************************/
+			try{
+				camera.close();
+			}catch(...){
+				outputfile << "error closing camera" << endl;
+				this_thread::sleep_for(error_timeout);
+			}
 			this_thread::sleep_for(error_timeout);
+			/***********************************************/
 		}
-
-		/*****************************************************************/
-		// close camera
-		/*****************************************************************/	
-		try{
-			camera.close();
-		}catch(...){
-			outputfile << "error camera Close" << endl;
-			this_thread::sleep_for(error_timeout);
-		}
-		/*****************************************************************/	
-		// close the file again
-		/*****************************************************************/	
-		outputfile.close();
-
 	}
 }
 
