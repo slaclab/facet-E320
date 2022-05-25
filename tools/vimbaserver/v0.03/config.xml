@@ -1,0 +1,32 @@
+<config>
+	<camera id="DEV_1AB22C014125">
+	  <default_setting name="PixelFormat" value="17825795" method="VmbInt64_t" comment="VmbPixelFormatMono10" />
+	  <default_setting name="DeviceLinkThroughputLimit" value="200000000" method="VmbInt64_t" comment="1600 Mbit" />
+	  <default_setting name="Gain" value="0.0" method="double" comment="dB 0-17.75" />
+	  <default_setting name="ExposureTime" value="1e5" method="double" comment="unit: 10-6s" />
+	  <default_setting name="BinningHorizontal" value="4" method="VmbInt64_t" comment="1-8" />
+	  <default_setting name="BinningVertical" value="4" method="VmbInt64_t" comment="1-8" />
+
+	  <default_setting name="LineSelector" value="Line0" method="enum" comment="" />
+	  <default_setting name="LineMode" value="Input" method="enum" comment="" />
+	  <default_setting name="TriggerSource" value="Line0" method="enum" comment="" />
+	  <default_setting name="TriggerMode" value="On" method="enum" comment="" />
+
+
+
+	</camera>
+</config>
+
+<oldconfig>
+
+	<camera id="DEV_1AB22C011FE5">
+	  	<default_setting name="PixelFormat" value="17825795" method="VmbInt64_t" comment="VmbPixelFormatMono10" />
+	  	<default_setting name="Gain" value="0.0" method="double" comment="dB" />
+	  	<default_setting name="ExposureTime" value="1e3" method="double" comment="unit: 10-6s" />
+	  	<default_setting name="DeviceLinkThroughputLimit" value="25000000" method="VmbInt64_t" comment="200 Mbit" />
+  		<default_setting name="AcquisitionFrameRate" value="15.0" method="double" comment="FPS" />
+
+
+	</camera>
+
+</oldconfig>

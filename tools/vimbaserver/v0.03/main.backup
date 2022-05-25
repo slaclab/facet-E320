@@ -1,0 +1,123 @@
+/*****************************************************************************/
+// Thread-save stream
+/*****************************************************************************/
+//
+// based on: https://stackoverflow.com/questions/36439373/c-locking-stream-operators-with-mutex
+//
+class CStream
+{
+	unique_lock<mutex>		slock;
+	ostream*				streamptr;
+	
+public:
+
+	// global mutex which controls access to the stream
+	static mutex			smutex;
+
+
+	// initialize the lock, initialize the stream	
+	CStream(ostream& stream) : slock(smutex), streamptr(&stream){
+		//cerr << "CStream created with ostream argument" << endl;
+	}
+
+	CStream(CStream&& stream) : slock(move(stream.slock)) , streamptr(stream.streamptr){
+		//cerr << "CStream created with cstream argument" << endl;
+		stream.streamptr	= nullptr;
+	}
+	
+	~CStream(){
+		//cerr << "CStream deleted" << endl;
+	}
+
+	friend CStream&& operator << (CStream&& stream, ostream& (*argument)(ostream&)){
+		(*(stream.streamptr)) << argument;
+
+		// passes the actual stream on
+		return	move(stream);	
+	}
+
+	template <typename T>
+	friend CStream&& operator << (CStream&& stream, T&& argument){
+		// forwards the argument
+		(*(stream.streamptr)) << forward<T>(argument);
+		return	move(stream);	
+	}
+};
+
+// global mutex, exists only once
+mutex	CStream::smutex{};
+/*****************************************************************************/
+// multi-thread CStream(tout) class
+/*****************************************************************************/
+
+// saves the good old CStream(tout)
+ostream				cout_old(cout.rdbuf());
+
+class CThreadCout : public ostringstream
+{
+public:
+    CThreadCout(int pos) : ostringstream(){
+        cout << "CThreadCout created " << pos << endl;
+    	this->pos 		= pos;
+    }
+
+
+    ~CThreadCout()
+    {
+        cout << "CThreadCout deleted " << pos << endl;
+    }
+
+
+private:
+	int						pos;
+
+};
+
+
+
+/*****************************************************************************/
+// dump CStream(tout)
+/*****************************************************************************/
+
+
+CThreadCout			tout(0);
+
+void	dump_cout(){
+	CStream::smutex.lock();
+	string	data	= tout.str();
+	cout_old	<< data;
+	tout.str(string());
+	CStream::smutex.unlock();
+	return;
+	
+	cout_old	<< "I am here" << endl;
+	while(true){
+		this_thread::sleep_for(1ms);
+
+		CStream::smutex.lock();
+		string	data			= tout.str();
+		int		lastlinepos		= data.rfind('\n');
+		if(lastlinepos > 0){
+			tout.str(data.substr(lastlinepos+1));
+		}else{
+			tout.str(data);
+		}
+		CStream::smutex.unlock();
+
+		if(lastlinepos > 0){
+			string	lines		= data.substr(0, lastlinepos+1);
+			while(true){
+				int			pos	= lines.find('\n');
+				if(pos < 0){
+					break;
+				}
+				string	newline	= lines.substr(0,pos+1);
+				lines			= lines.substr(pos+1);
+				cout_old	<< "hi> " <<  newline;			
+			}
+		}
+	}
+}
+
+
+
