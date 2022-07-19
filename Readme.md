@@ -3,6 +3,15 @@
 This is  a collection of code for the FACET experiment E-320. However, anything related to data access and analysis at [FACET](https://facet-ii.slac.stanford.edu/) is welcome here.
 
 
+# Contents and Use
+
+1) To use the python routines, just type `import E320` from anywhere. No need to copy the files after the package is installed.
+
+2) `E320.camviewer` contains a python camera view application. Run it like any other python package with `python -m E320.camviewer` from anywhere.
+
+3) The cameraserver is written in C and there not installed with the package. It is located in `tools/vimbaserver`.
+
+
 # Installation for Users
 
 * Clone or download the repository and install it using
